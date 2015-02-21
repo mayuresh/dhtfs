@@ -1,0 +1,15 @@
+REQUIREMENTS:
+ 
+ - FUSE 2.* (tested with FUSE 2.3 and newer) (http://fuse.sourceforge.net)
+ - fuse-python (http://fuse.sourceforge.net/wiki/index.php/FusePython)
+ - In general, Python 2.4 or newer. May run with older versions, its only tested with 2.4
+
+INSTALLATION:
+
+The best way to install this module is to run the setup script
+provided with this module.
+
+'sudo python setup.py install'
+
+Will install the required files. 'sudo' is required since the files
+would be install in system dierctories.

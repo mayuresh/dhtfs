@@ -1,0 +1,101 @@
+#!/usr/bin/python
+
+# License
+#
+# Copyright (c) 2006, Mayuresh Phadke
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#         * Redistributions of source code must retain the above copyright
+#           notice, this list of conditions and the following disclaimer.
+#         * Redistributions in binary form must reproduce the above copyright
+#           notice, this list of conditions and the following disclaimer in the
+# 	    documentation and/or other materials provided with the distribution.
+#         * Neither the name of 'QualEx Systems' nor the names of its
+# 	    contributors may be used to endorse or promote products derived from
+# 	    this software without specific prior written permission.
+# 
+#         THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+import os
+import sys
+
+def __getAbsolutePath(option, opt_str, value, parser):
+	abspath = os.path.abspath(value)
+	setattr(parser.values, option.dest, abspath)
+
+def main():
+
+	try:
+		from dhtfs.Dhtfs import Dhtfs
+		import fuse
+		from fuse import Fuse
+		from dhtfs.TagHelper import TagFile
+
+	except ImportError:
+		print >> sys.stderr, "%s: Error: Required modules or libraries not setup properly" % sys.argv[0]
+		sys.exit(1)
+
+	usage = """
+Generates Dynamic Hierarchy for Files from tags associated with files. Generated for files in directory specified as root
+
+""" + Fuse.fusage
+
+	server = Dhtfs(version="%prog " + fuse.__version__,
+					usage=usage,
+					dash_s_do='setsingle')
+
+	server.parser.add_option(mountopt="root",
+				metavar="PATH",
+				default='/',
+				dest="root",
+				action = "callback",
+				callback =  __getAbsolutePath,
+				help="use filesystem from under PATH [default: %default]")
+	server.parser.add_option(mountopt="getcover",
+				metavar="Option",
+				default="Dont Care",
+				dest="getCover",
+				help="""
+If set to 'Always', only show directories which cover all the files;
+If set to 'Never', show all possible directories;
+[default: %default]
+				""")
+
+	server.parse(values=server, errex=1)
+
+	if server.fuse_args.mount_expected():
+		# server.root is not getting set by default, workaround it for now
+		# TODO: Look into this
+		try:
+			X = server.root
+		except AttributeError:
+			server.root = '/'
+
+		try:
+			os.stat(server.root)
+		except OSError:
+			print >> sys.stderr, "can't stat root of underlying filesystem: %s" % (server.root)
+			sys.exit(1)
+
+		if not Dhtfs.checkSetup(server.root):
+			print >> sys.stderr, "The path %s does not seem to formatted for dhtfs" % (server.root)
+			sys.exit(2)
+
+	server.main()
+
+
+if __name__ == '__main__':
+	main()

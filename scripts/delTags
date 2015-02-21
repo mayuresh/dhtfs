@@ -1,0 +1,164 @@
+#!/usr/bin/python
+
+# Copyright (c) 2006, Mayuresh Phadke
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#         * Redistributions of source code must retain the above copyright
+#           notice, this list of conditions and the following disclaimer.
+#         * Redistributions in binary form must reproduce the above copyright
+#           notice, this list of conditions and the following disclaimer in the
+# 	    documentation and/or other materials provided with the distribution.
+#         * Neither the name of 'QualEx Systems' nor the names of its
+# 	    contributors may be used to endorse or promote products derived from
+# 	    this software without specific prior written permission.
+# 
+#         THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+import sys, os
+from optparse import OptionParser
+
+fieldSeperator = ','
+
+def convertToList(option, opt_str, value, parser):
+	setattr(parser.values, option.dest, value.split(fieldSeperator))
+
+def parseCommandLine():
+
+	usage = """usage: %prog [options] [element [tag1 tag2 tag3 ...]]
+		Delete tags from a file.
+		In it's simplest form the command can be called with filename as its first 
+		argument and all arguments after that are considered as tags to be deleted from the file. 
+		To delete multiple tags from multiple files use the options below.
+		The files and tags can be specified either as arguments or parameters but not both at the same time.
+
+		If multiple files are specified all the files must be from the same filesystem.
+		"""
+
+	parser = OptionParser(usage=usage)
+	parser.add_option(	"-t", "--tag-list",
+				dest='tagList',
+				default=[],
+				action="callback",
+				callback=convertToList,
+				type="str",
+				metavar="TAGLIST",
+				help="Comma seperated list of tags to delete from the given files")
+				
+	parser.add_option(	"-e", "--element-list",
+				dest='elementList',
+				default=[],
+				action="callback",
+				callback=convertToList,
+				type="str",
+				metavar="ELEMENTLIST",
+				help="Comma seperated list of files from which the tags will be deleted")
+
+	(options, args) = parser.parse_args()
+	
+	# Check options
+	if (options.elementList == [] or options.tagList == []) and len(args) == 0:
+		parser.error("No input tags or elements found")
+
+	if (options.elementList != [] or options.tagList != []) and len(args) > 0:
+		 parser.error("Arguments and parameters used simultaneously")
+
+	if (options.elementList == [] and options.tagList == []) and len(args) < 2:
+		parser.error("Atleast two arguments expected. Only one found")
+
+	if (options.elementList != [] and options.tagList == []) or (options.elementList == [] and options.tagList != []):
+		parser.error("-e and -t options should be used simultaneously if used")
+
+	# At this point we are sure that the options are ok
+
+	# Get the list of tags and list of elements to be tagged
+	if len(args) > 1:
+		elementList = args[:1]
+		tagList = args[1:]
+	else:
+		elementList = options.elementList
+		tagList = options.tagList
+
+	return (elementList, tagList, parser)
+
+def getMountpoint(s):
+	if (os.path.ismount(s) or len(s)==0): return s
+	else: return getMountpoint(os.path.split(s)[0])
+
+def getAllMountpoints():
+	import commands
+
+	out = commands.getoutput('mount -v')
+
+	# Split output lines
+	out = out.split('\n')
+
+	# split each line 
+	out = [a.split() for a in out]
+
+	# The third item in each line is the mount point and fifth is filesystem type
+	# just retain these
+	out = [(a[2], a[4]) for a in out]
+
+	# create a dictionary from the information
+	# dictionary will be of form 'mountpoint' = 'type'
+	d = dict(out)
+	return d
+
+def main():
+	
+	(fileList, tagList, parser) = parseCommandLine()
+
+	try:
+		from dhtfs.TagHelper import TagFile
+		import dhtfs.TagHelper
+
+	except ImportError:
+		print >> sys.stderr, "%s: Error: Required modules or libraries not setup properly" % sys.argv[0]
+		sys.exit(1)
+
+	allMountpoints = getAllMountpoints()
+
+	fileList = [os.path.abspath(x) for x in fileList]
+	fileList = [os.path.realpath(x) for x in fileList]
+
+	commonprefix = os.path.commonprefix(fileList)
+
+	mountpoint = getMountpoint(commonprefix)
+
+	if allMountpoints.get(mountpoint, '') != 'fuse':
+		parser.error("Common mountpoint for the specified files is: '%s' This is not a FUSE filesystem" % mountpoint)
+
+	try:
+		f = file(os.path.join(mountpoint, '.mount.info'), 'r')
+		dbLocation = f.read()
+		f.close()
+	except:
+		dbLocation = None
+
+	if not dbLocation:
+		parser.error("Common mountpoint for the specified files is: '%s' This is not a dhtfs filesystem" % mountpoint)
+
+	td = TagDir(db_path=dbLocation, db_file=Dhtfs.DB_FILE)
+	# Get file names
+	fileNames = [os.path.basename(a) for a in fileList]
+
+	# Get file instances for the selected files
+	fiList = [a for a in td.getAllFiles() if a.name in fileNames]
+
+	td.delFilesFromDirs(fiList, tagList)
+
+if __name__ == "__main__":
+	main()

@@ -1,0 +1,90 @@
+#!/usr/bin/python
+
+# Copyright (c) 2006, Mayuresh Phadke
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#         * Redistributions of source code must retain the above copyright
+#           notice, this list of conditions and the following disclaimer.
+#         * Redistributions in binary form must reproduce the above copyright
+#           notice, this list of conditions and the following disclaimer in the
+# 	    documentation and/or other materials provided with the distribution.
+#         * Neither the name of 'QualEx Systems' nor the names of its
+# 	    contributors may be used to endorse or promote products derived from
+# 	    this software without specific prior written permission.
+# 
+#         THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+import sys
+import os
+from optparse import OptionParser
+
+usage =	""" %prog [options] directory
+
+	Initialize the directory for the given path to work with DHTFS
+	"""
+parser = OptionParser(usage=usage)
+parser.add_option("-v", "--verbose", dest="verbose", default=False,
+			action="store_true",
+			help="print status messages to stdout")
+parser.add_option("--init-db", default=False, action="store_true", dest="forceInit",
+			help="Wipe out the old DB. Use this option with care.")
+
+(options, args) = parser.parse_args()
+
+if len(args) != 1:
+	parser.error("One command line argument expected")
+
+verbose = options.verbose
+FSPath = args[0]
+forceInit = options.forceInit
+
+try:
+	from dhtfs.Dhtfs import Dhtfs
+	from dhtfs.Tagging import Tagging
+	from dhtfs.TagHelper import TagFile
+except ImportError:
+	print >> sys.stderr, "%s: Error: Required modules or libraries not setup properly" % sys.argv[0]
+	sys.exit(1)
+
+FSPath = os.path.abspath(FSPath)
+if not os.path.isdir(FSPath):
+	parser.error("The specified location is not a directory")
+
+if verbose:
+	print 'Initializing DHTFS for path %s' % FSPath
+
+Dhtfs.setup(FSPath, forceInit)
+
+# Store the path of the file system in '.mount.info'
+# Add tags so that the file is visible from mounted filesystems
+# This file will be used to determine the underlying filesystem of a mounted filesystem
+#
+# There may be better ways of doing this which will be explored in the future
+
+mountInfoFileName = '.mount.info'
+mountInfoFileLocation = os.path.join(FSPath, mountInfoFileName)
+
+f = file(mountInfoFileLocation, 'w')
+f.write(FSPath)
+f.close()
+
+fi = TagFile(mountInfoFileLocation, mountInfoFileName)
+
+t = Tagging(db_path = FSPath, db_file=Dhtfs.DB_FILE)
+t.addTags(elementList=[fi], newTagList=[])
+
+if verbose:
+	print 'Initialization done'
